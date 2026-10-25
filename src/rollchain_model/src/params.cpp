@@ -177,15 +177,31 @@ void validate(const RobotParams& p)
                        << " so that its hole exit lies on the arc";
         continue;
       }
-      if (ax + p.r_h + p.wall > 0.5 * sec.D)
+      if (std::hypot(rod.x, rod.w) + p.r_h + p.wall > 0.5 * sec.D)
       {
         problems.add() << label << ": hole does not fit inside the link of " << section_label(q + 1)
-                       << " (|x| + r_h + wall > D/2)";
+                       << " (sqrt(x^2 + w^2) + r_h + wall > D/2)";
       }
       const double hole_length = sec.L - sec.R * (1.0 - std::cos(std::asin(ax / sec.R)));
       if (p.lambda0 > 0.5 * hole_length)
       {
         problems.add() << label << ": lambda0 exceeds half the hole length in " << section_label(q + 1);
+      }
+    }
+  }
+
+  // ---- Holes must not overlap ---------------------------------------------
+  // Every rod crosses section 1, so checking all pairs once covers every link.
+  for (std::size_t a = 0; a < p.rods.size(); ++a)
+  {
+    for (std::size_t b = a + 1; b < p.rods.size(); ++b)
+    {
+      const RodParams& ra = p.rods[a];
+      const RodParams& rb = p.rods[b];
+      if (std::hypot(ra.x - rb.x, ra.w - rb.w) < 2.0 * p.r_h + p.wall)
+      {
+        problems.add() << "rods '" << ra.name << "' and '" << rb.name
+                       << "': holes overlap (centre distance < 2 r_h + wall); move one along the joint axis (w)";
       }
     }
   }

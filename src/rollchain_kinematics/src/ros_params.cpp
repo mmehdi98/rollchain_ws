@@ -112,9 +112,14 @@ NodeConfig declare_robot_parameters(rclcpp::Node& node)
   const auto names = required<std::vector<std::string>>(node, "rods.name", "rod names, listed section by section");
   const auto section = required<std::vector<int64_t>>(node, "rods.section", "section of each rod (from 1)");
   const auto x = required<std::vector<double>>(node, "rods.x", "lateral offset of each rod [m], + = left");
+  // Depth along the joint axis: structure, but optional (empty = all 0).
+  const auto w = node.declare_parameter<std::vector<double>>(
+      "rods.w", std::vector<double>{},
+      describe("depth of each rod along the joint axis [m]; empty = 0 (structure: set in the robot config)", true));
   const std::size_t n_rods = names.size();
   expect_size("rods.section", section.size(), n_rods, "rod");
   expect_size("rods.x", x.size(), n_rods, "rod");
+  apply_optional("rods.w", w, n_rods, "rod");
   robot.rods.resize(n_rods);
   for (std::size_t j = 0; j < n_rods; ++j)
   {
@@ -125,6 +130,7 @@ NodeConfig declare_robot_parameters(rclcpp::Node& node)
     robot.rods[j].name = names[j];
     robot.rods[j].section = static_cast<std::size_t>(section[j]);
     robot.rods[j].x = x[j];
+    robot.rods[j].w = w.empty() ? 0.0 : w[j];
   }
 
   // ---- Physics: optional, changeable at runtime ----------------------------
@@ -191,7 +197,7 @@ bool apply_parameter(NodeConfig& config, const rclcpp::Parameter& p, std::string
   {
     if (name == "base.length" || name == "sections.n" || name == "sections.L" ||
         name == "sections.R" || name == "sections.D" || name == "rods.name" || name == "rods.section" ||
-        name == "rods.x")
+        name == "rods.x" || name == "rods.w")
     {
       reason = name + " is a structure parameter: change the robot config and restart";
       return false;

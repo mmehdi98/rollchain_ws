@@ -36,6 +36,8 @@ struct RodParams
   std::string name;         ///< unique label, e.g. "1L"
   std::size_t section = 1;  ///< section the rod belongs to (1-based); fixed in its last link
   double x = 0.0;           ///< signed lateral offset from the link axis [m], + = left
+  double w = 0.0;           ///< depth along the joint axis [m]; places the hole (fit, overlap,
+                            ///< drawing) but does not enter the planar statics (theory §9.2)
   double r = 0.3e-3;        ///< rod radius [m]
   double E = 61.0e9;        ///< equivalent bending modulus [Pa]; 0 = a cable with no bending stiffness
 };

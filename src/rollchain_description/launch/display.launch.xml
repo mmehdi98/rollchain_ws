@@ -5,11 +5,10 @@
 <launch>
   <arg name="config" default="$(find-pkg-share rollchain_description)/config/reference_robot.yaml"
        description="robot config (YAML), the same file the nodes read"/>
-  <let name="urdf_path" value="$(find-pkg-share rollchain_description)/urdf/rollchain.urdf.xacro"/>
   <let name="rviz_config" value="$(find-pkg-share rollchain_description)/rviz/rollchain.rviz"/>
 
   <node pkg="robot_state_publisher" exec="robot_state_publisher">
-    <param name="robot_description" type="str" value="$(command 'xacro $(var urdf_path) config:=$(var config)')"/>
+    <param name="robot_description" type="str" value="$(command '$(find-pkg-prefix rollchain_description)/lib/rollchain_description/rollchain_urdf $(var config)')"/>
   </node>
   <node pkg="joint_state_publisher_gui" exec="joint_state_publisher_gui"/>
   <node pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)"/>

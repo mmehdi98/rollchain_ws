@@ -15,7 +15,8 @@ namespace rollchain_test
 using namespace rollchain_model;
 
 /// The reference robot of theory §11.2 (also config/reference_robot.yaml):
-/// S = 3, n = (10, 8, 6), L = 15 mm, R = 4 mm, rods at +-(1.6, 2.0, 2.4) mm.
+/// S = 3, n = (10, 8, 6), L = 15 mm, R = 4 mm, rods at x = +-(1.6, 2.0, 2.4) mm
+/// and depths w = (-1, +1, 0) mm so that the 0.8 mm holes do not overlap.
 /// Rod order: 1L 1R 2L 2R 3L 3R.
 inline RobotParams reference_robot()
 {
@@ -33,6 +34,7 @@ inline RobotParams reference_robot()
     p.sections.push_back(s);
   }
   const double a[3] = {1.6e-3, 2.0e-3, 2.4e-3};
+  const double depth[3] = {-1.0e-3, 1.0e-3, 0.0};
   for (std::size_t s = 1; s <= 3; ++s)
   {
     for (int side : {+1, -1})
@@ -41,6 +43,7 @@ inline RobotParams reference_robot()
       rod.name = std::to_string(s) + (side > 0 ? "L" : "R");
       rod.section = s;
       rod.x = side * a[s - 1];
+      rod.w = depth[s - 1];
       rod.r = 0.3e-3;
       rod.E = 61.0e9;
       p.rods.push_back(rod);

@@ -86,6 +86,24 @@ TEST(Params, RejectsHoleOutsideTheLink)
   expect_invalid(p, "on the arc");
 }
 
+TEST(Params, RejectsOverlappingHoles)
+{
+  // All rods at the same depth: holes 0.4 mm apart with 0.4 mm radius.
+  RobotParams p = reference_robot();
+  for (RodParams& rod : p.rods)
+  {
+    rod.w = 0.0;
+  }
+  expect_invalid(p, "holes overlap");
+}
+
+TEST(Params, DepthCountsForTheFit)
+{
+  RobotParams p = reference_robot();
+  p.rods[4].w = 1.0e-3;  // (2.4, 1.0) mm: 2.6 + 0.4 + 0.2 > 3.1
+  expect_invalid(p, "does not fit");
+}
+
 TEST(Params, RejectsBadSections)
 {
   RobotParams p = reference_robot();

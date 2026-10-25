@@ -133,6 +133,7 @@ $$m(\mathbf r,\mathbf F) = r_a F_\ell - r_\ell F_a\tag{RC2}$$
 |---|---|
 | $s_j$ | section; the rod is fixed in link $N_{s_j}$ |
 | $x_j$ | signed lateral offset from the link axis, positive to the left |
+| $w_j$ | depth along the joint axis; places the hole (fit, overlap), not used by the planar statics (§9.2) |
 | $r_j$, $E_j$ | radius and equivalent bending modulus; $I_j = \pi r_j^4/4$ |
 
 ### 4.3 Global
@@ -445,7 +446,7 @@ Done with an independent Python implementation of the equations above (2026-10-2
 | Newton vs fixed point with gravity (upright) | 1e-15 rad |
 
 ### 11.2 Reference robot and values for testing the C++ code
-- **Robot:** $S = 3$, $n = (10, 8, 6)$. Every section has $L$ = 15 mm and $R$ = 4 mm. Rods: $r$ = 0.3 mm, $E$ = 61 GPa, at $\pm a_s$ with $a$ = (1.6, 2.0, 2.4) mm.
+- **Robot:** $S = 3$, $n = (10, 8, 6)$. Every section has $L$ = 15 mm and $R$ = 4 mm. Rods: $r$ = 0.3 mm, $E$ = 61 GPa, at $\pm a_s$ with $a$ = (1.6, 2.0, 2.4) mm, and at depths $w$ = (−1, +1, 0) mm along the joint axis so that the 0.8 mm holes do not overlap (§9.2; $w$ does not change any value below).
 - **Model:** μ = 0.66, $\lambda_0$ = 2.2 mm, $r_h$ = 0.4 mm, stop stiffness 10 N·m/rad (never engaged in these cases). Exact $|\theta|$; smoothing it with ε = 1e-4 rad changes the angles by up to 0.004°.
 - **Loads (cases E and F only):** link weight 5.685 mN, $y_{CG}$ = 7.35 mm.
 - **Derived:** joint ranges 17.19°, 22.92° and 28.65°; $k^0$ = 0.4704, 0.3065 and 0.1493 N·m/rad.

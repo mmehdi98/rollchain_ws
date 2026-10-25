@@ -17,15 +17,24 @@
 
   The real joint range is computed and enforced by the model (theory RC5);
   the URDF limits are deliberately generous so there is no second copy of it.
+
+  Visuals: with mesh_uri set to a URI prefix (rollchain_urdf does this, with
+  the package:// path of the installed meshes, or a local cache URI for a config
+  the package does not ship), each link is drawn with <mesh_uri>/section_{s}.stl,
+  its real shape with the rolling arc, plus section_{s}_holes.stl for the rod
+  holes. Without it, plain cylinders.
 -->
 <robot name="rollchain" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <xacro:arg name="config" default="$(find rollchain_description)/config/reference_robot.yaml"/>
+  <xacro:arg name="mesh_uri" default=""/>
 
   <xacro:property name="cfg" value="${xacro.load_yaml('$(arg config)')['/**']['ros__parameters']}"/>
   <xacro:property name="sec" value="${cfg['sections']}"/>
   <xacro:property name="num_sections" value="${len(sec['n'])}"/>
   <xacro:property name="base_length" value="${cfg['base']['length']}"/>
+  <xacro:property name="mesh_uri" value="$(arg mesh_uri)"/>
+  <xacro:property name="use_meshes" value="${len(mesh_uri) > 0}"/>
 
   <material name="rc_base"><color rgba="0.40 0.40 0.40 1"/></material>
   <material name="rc_0"><color rgba="0.85 0.45 0.15 1"/></material>
@@ -33,6 +42,7 @@
   <material name="rc_2"><color rgba="0.30 0.65 0.35 1"/></material>
   <material name="rc_3"><color rgba="0.60 0.35 0.70 1"/></material>
   <material name="rc_4"><color rgba="0.80 0.30 0.30 1"/></material>
+  <material name="rc_hole"><color rgba="0.08 0.08 0.08 1"/></material>
 
   <link name="base_link">
     <visual>
@@ -80,16 +90,32 @@
       <origin xyz="0 0 ${-R}"/>
     </joint>
 
-    <!-- Visual: a cylinder from the crest to the flat top, coloured by section.
-         Replace it with a mesh of the real link (flat top, one bottom arc) when you have one. -->
+    <!-- Visual, coloured by section: the real link shape (mesh in the link frame,
+         origin at the crest), or a cylinder from the crest to the flat top. -->
     <link name="link_${i}">
-      <visual>
-        <origin xyz="0 0 ${L / 2}"/>
-        <geometry>
-          <cylinder radius="${D / 2}" length="${L}"/>
-        </geometry>
-        <material name="rc_${s % 5}"/>
-      </visual>
+      <xacro:if value="${use_meshes}">
+        <visual>
+          <geometry>
+            <mesh filename="${mesh_uri}/section_${s + 1}.stl"/>
+          </geometry>
+          <material name="rc_${s % 5}"/>
+        </visual>
+        <visual>
+          <geometry>
+            <mesh filename="${mesh_uri}/section_${s + 1}_holes.stl"/>
+          </geometry>
+          <material name="rc_hole"/>
+        </visual>
+      </xacro:if>
+      <xacro:unless value="${use_meshes}">
+        <visual>
+          <origin xyz="0 0 ${L / 2}"/>
+          <geometry>
+            <cylinder radius="${D / 2}" length="${L}"/>
+          </geometry>
+          <material name="rc_${s % 5}"/>
+        </visual>
+      </xacro:unless>
     </link>
 
     <xacro:if value="${k &lt; n}">

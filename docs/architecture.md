@@ -58,6 +58,7 @@ One file per robot in `rollchain_description/config/`. The reference robot of th
       name:    ["1L", "1R", "2L", "2R", "3L", "3R"]
       section: [1, 1, 2, 2, 3, 3]
       x:       [1.6e-3, -1.6e-3, 2.0e-3, -2.0e-3, 2.4e-3, -2.4e-3]   # + = left
+      w:       [-1.0e-3, -1.0e-3, 1.0e-3, 1.0e-3, 0.0, 0.0]          # depth along the joint axis
       r:       [0.3e-3, 0.3e-3, 0.3e-3, 0.3e-3, 0.3e-3, 0.3e-3]
       E:       [61.0e9, 61.0e9, 61.0e9, 61.0e9, 61.0e9, 61.0e9]
     holes:

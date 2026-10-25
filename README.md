@@ -46,17 +46,26 @@ RViz, the model, and a slider window with one slider per rod. Arguments:
 
 To check the URDF alone, with a slider per joint: `ros2 launch rollchain_description display.launch.xml`.
 
+**Link meshes.** The launch files build `robot_description` with `rollchain_urdf <config>`. Each link is drawn with the real link shape: a flat top and a bottom cut by the rolling arc of radius R, plus a second mesh per section that marks the rod holes as dark discs. Every mesh set is named after a hash of the geometry, so the meshes always come from the same config as the model.
+
+The build generates the meshes for every config in `rollchain_description/config/` and installs them into `share/rollchain_description/meshes/<hash>/`. The URDF references those as `package://rollchain_description/meshes/<hash>/...`, which resolves on any machine with the package installed, so `robot_description` can go to an RViz elsewhere.
+
+For a config outside the package there is nothing installed to point at. The meshes then go to a local cache (`$ROS_HOME/rollchain_meshes/<hash>`, default `~/.ros`), the URDF gets `file://` paths, and `rollchain_urdf` says so on stderr. To ship a new robot, put its config in `rollchain_description/config/` and rebuild.
+
+Plain `xacro rollchain.urdf.xacro config:=...` still works, and draws the links as cylinders.
+
 ## The robot config
 
 One YAML file describes the robot. The xacro reads it (`xacro rollchain.urdf.xacro config:=<file>`) and every node gets it as its parameter file, so the URDF and the model cannot disagree. See `rollchain_description/config/reference_robot.yaml` for a commented example (the reference robot of the theory: 3 sections of 10, 8 and 6 links).
 
 - **Sections** are arrays with one entry per section: `sections.n`, `L`, `R`, `D`, `weight`, `y_cg`.
-- **Rods** are arrays with one entry per rod, listed section by section: `rods.name`, `section`, `x` (lateral offset, + = left), `r`, `E`.
+- **Rods** are arrays with one entry per rod, listed section by section: `rods.name`, `section`, `x` (lateral offset, + = left), `w`, `r`, `E`.
+  - `w` is the optional depth along the joint axis, default 0. It keeps holes apart and places them in the drawing, but does not enter the planar statics.
 - **Holes and friction:** `holes.lambda0`, `holes.r_h`, `holes.wall`, `friction.mu`.
 - **Units:** SI. Write exponents with a sign (`61.0e+9`): xacro reads the file with PyYAML, which reads `61.0e9` as a string.
-- **Structure keys are fixed at start-up:** `base.length`, `sections.n/L/R/D`, `rods.name/section/x`. Everything else can be changed at runtime.
+- **Structure keys are fixed at start-up:** `base.length`, `sections.n/L/R/D`, `rods.name/section/x/w`. Everything else can be changed at runtime.
 
-The node validates the config when it starts and lists every problem at once, for example a hole that does not fit in the link or a rod inside the contact path.
+The node validates the config when it starts and lists every problem at once, for example a hole that does not fit in the link, two holes that overlap, or a rod inside the contact path.
 
 ## rollchain_state_publisher
 
@@ -104,7 +113,6 @@ State g = model.solve({0, 0, 0, 0, 10.0, 0}, upright);  // coupled solve (Newton
 ## Notes
 
 - **Planar only.** The statics already work with per-joint lever offsets, so the spatial version (theory §10) changes only the geometry builder and the kinematics.
-- **Visuals** are cylinders coloured by section. Replace them with meshes of the real links in the xacro.
 - **xacro builds the chain recursively.** That works up to about 150 links; beyond that it hits Python's recursion limit.
 - **Docs:** `docs/theory.md` is the model; `docs/architecture.md` explains the design. The theory builds on the corrected 1-DOF model of lopsy.
 - **License:** not chosen yet (`TODO` in every `package.xml`).

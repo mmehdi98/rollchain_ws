@@ -37,6 +37,7 @@ protected:
         rclcpp::Parameter("rods.name", std::vector<std::string>{"1L", "1R", "2L", "2R", "3L", "3R"}),
         rclcpp::Parameter("rods.section", std::vector<int64_t>{1, 1, 2, 2, 3, 3}),
         rclcpp::Parameter("rods.x", std::vector<double>{1.6e-3, -1.6e-3, 2.0e-3, -2.0e-3, 2.4e-3, -2.4e-3}),
+        rclcpp::Parameter("rods.w", std::vector<double>{-1.0e-3, -1.0e-3, 1.0e-3, 1.0e-3, 0.0, 0.0}),
         rclcpp::Parameter("rods.r", std::vector<double>(6, 0.3e-3)),
         rclcpp::Parameter("rods.E", std::vector<double>(6, 61.0e9)),
         rclcpp::Parameter("holes.lambda0", 2.2e-3),
@@ -81,6 +82,7 @@ TEST_F(RosParams, ReadsTheReferenceConfig)
   EXPECT_EQ(c.robot.rods[4].name, "3L");
   EXPECT_EQ(c.robot.rods[4].section, 3u);
   EXPECT_DOUBLE_EQ(c.robot.rods[5].x, -2.4e-3);
+  EXPECT_DOUBLE_EQ(c.robot.rods[2].w, 1.0e-3);
   EXPECT_DOUBLE_EQ(c.robot.rods[0].E, 61.0e9);
   EXPECT_DOUBLE_EQ(c.robot.mu, 0.66);
   EXPECT_FALSE(c.loads.gravity_in_plane);

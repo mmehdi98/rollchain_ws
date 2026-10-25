@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""Print the rollchain URDF for a robot config, with link meshes made from it.
+
+    rollchain_urdf CONFIG [--mesh-dir DIR] [--no-meshes] [--xacro FILE]
+    rollchain_urdf --build-meshes OUT_DIR CONFIG [CONFIG ...]
+
+Each section gets a mesh of its real link: a cylinder of diameter D with a flat
+top at z = L and a bottom cut by the rolling arc z = R - sqrt(R^2 - x^2),
+origin at the crest (the URDF link frame). A second mesh per section marks the
+rod holes as dark discs on the top and bottom faces.
+
+Every mesh set is named after a hash of the geometry, so the meshes are always
+made from the same config as the URDF and the model. The build generates them
+for every config in rollchain_description/config (--build-meshes) and installs
+them into share/rollchain_description/meshes/<hash>; the URDF then references
+them as package:// paths, which any machine with the package installed resolves.
+
+A config the package does not ship has nothing installed to point at, so its
+meshes go to a local cache ($ROS_HOME/rollchain_meshes/<hash>, default ~/.ros),
+reused while the geometry is unchanged, and the URDF gets file:// paths instead.
+
+Without meshes (--no-meshes, or plain `xacro rollchain.urdf.xacro`) the links
+are drawn as cylinders.
+"""
+
+import argparse
+import hashlib
+import json
+import math
+import os
+import sys
+import tempfile
+
+import numpy as np
+import yaml
+
+MESH_VERSION = 1   # bump when the mesh layout changes, to invalidate the cache
+N_PHI = 96         # segments around the link
+N_RINGS = 16       # rings on the curved bottom
+N_HOLE = 24        # segments around a hole
+HOLE_EPS = 0.05e-3  # hole discs stand this far proud of the faces [m]
+
+
+# ---- Geometry ---------------------------------------------------------------
+
+def arc_height(x, R):
+    """Height of the bottom arc above the crest at lateral position x."""
+    return R - np.sqrt(R * R - x * x)
+
+
+class TriangleSoup:
+    """Triangles with outward normals, oriented with a per-triangle test."""
+
+    def __init__(self):
+        self.tris = []
+
+    def add(self, a, b, c, outward):
+        """Add triangle abc, flipped if needed so that its normal agrees with `outward`."""
+        a, b, c = (np.asarray(p, float) for p in (a, b, c))
+        n = np.cross(b - a, c - a)
+        if np.dot(n, outward) < 0.0:
+            b, c = c, b
+        self.tris.append((a, b, c))
+
+    def quad(self, a, b, c, d, outward):
+        self.add(a, b, c, outward)
+        self.add(a, c, d, outward)
+
+    def array(self):
+        return np.array(self.tris, dtype=float)
+
+
+def link_mesh(L, R, D):
+    """Closed mesh of one symmetric link, in its URDF frame (origin at the crest)."""
+    rad = 0.5 * D
+    phis = np.linspace(0.0, 2.0 * math.pi, N_PHI, endpoint=False)
+    rings = rad * np.arange(1, N_RINGS + 1) / N_RINGS
+    soup = TriangleSoup()
+
+    def bottom(r, phi):
+        x, y = r * math.cos(phi), r * math.sin(phi)
+        return (x, y, float(arc_height(x, R)))
+
+    def top(phi):
+        return (rad * math.cos(phi), rad * math.sin(phi), L)
+
+    down, up = (0.0, 0.0, -1.0), (0.0, 0.0, 1.0)
+    for i, p0 in enumerate(phis):
+        p1 = phis[(i + 1) % N_PHI]
+        # bottom: fan around the crest, then rings out to the rim
+        soup.add((0.0, 0.0, 0.0), bottom(rings[0], p0), bottom(rings[0], p1), down)
+        for k in range(N_RINGS - 1):
+            soup.quad(bottom(rings[k], p0), bottom(rings[k], p1),
+                      bottom(rings[k + 1], p1), bottom(rings[k + 1], p0), down)
+        # wall, from the curved rim up to the flat top
+        mid = p0 + math.pi / N_PHI
+        radial = (math.cos(mid), math.sin(mid), 0.0)
+        soup.quad(bottom(rad, p0), bottom(rad, p1), top(p1), top(p0), radial)
+        # flat top
+        soup.add((0.0, 0.0, L), top(p0), top(p1), up)
+    return soup.array()
+
+
+def holes_mesh(L, R, holes, r_h):
+    """Short dark cylinders through the link at each hole (x, w); only their end discs show."""
+    soup = TriangleSoup()
+    phis = np.linspace(0.0, 2.0 * math.pi, N_HOLE, endpoint=False)
+    for x, w in holes:
+        # below the lowest point of the curved face inside the hole footprint
+        z_lo = float(arc_height(max(abs(x) - r_h, 0.0), R)) - HOLE_EPS
+        z_hi = L + HOLE_EPS
+        ring = [(x + r_h * math.cos(p), w + r_h * math.sin(p)) for p in phis]
+        for i in range(N_HOLE):
+            (x0, y0), (x1, y1) = ring[i], ring[(i + 1) % N_HOLE]
+            mid = phis[i] + math.pi / N_HOLE
+            radial = (math.cos(mid), math.sin(mid), 0.0)
+            soup.quad((x0, y0, z_lo), (x1, y1, z_lo), (x1, y1, z_hi), (x0, y0, z_hi), radial)
+            soup.add((x, w, z_hi), (x0, y0, z_hi), (x1, y1, z_hi), (0.0, 0.0, 1.0))
+            soup.add((x, w, z_lo), (x0, y0, z_lo), (x1, y1, z_lo), (0.0, 0.0, -1.0))
+    return soup.array()
+
+
+def write_stl(path, tris):
+    """Binary STL."""
+    record = np.dtype([('normal', '<f4', 3), ('v', '<f4', (3, 3)), ('attr', '<u2')])
+    data = np.zeros(len(tris), dtype=record)
+    n = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
+    norm = np.linalg.norm(n, axis=1, keepdims=True)
+    data['normal'] = n / np.where(norm > 0.0, norm, 1.0)
+    data['v'] = tris
+    tmp = path + '.tmp'
+    with open(tmp, 'wb') as f:
+        f.write(b'rollchain link'.ljust(80, b' '))
+        f.write(np.uint32(len(tris)).tobytes())
+        f.write(data.tobytes())
+    os.replace(tmp, path)  # atomic: a parallel launch never reads half a file
+
+
+# ---- Config -------------------------------------------------------------------
+
+def load_config(path):
+    with open(path) as f:
+        doc = yaml.safe_load(f)
+    try:
+        return doc['/**']['ros__parameters']
+    except (KeyError, TypeError):
+        sys.exit(f'rollchain_urdf: {path} has no "/**: ros__parameters:" block')
+
+
+def section_geometry(cfg):
+    """[(L, R, D, holes)] per section; the holes of section s are the rods of sections >= s, at (x, w)."""
+    sec, rods = cfg['sections'], cfg['rods']
+    r_h = float(cfg.get('holes', {}).get('r_h', 0.4e-3))
+    ws = rods.get('w') or [0.0] * len(rods['x'])
+    out = []
+    for s in range(len(sec['n'])):
+        holes = [(float(x), float(w)) for x, w, rs in zip(rods['x'], ws, rods['section']) if int(rs) >= s + 1]
+        out.append((float(sec['L'][s]), float(sec['R'][s]), float(sec['D'][s]), holes))
+    return out, r_h
+
+
+def geometry_hash(cfg):
+    """Name of the mesh set of this config: a digest of everything that shapes the meshes.
+
+    Both modes derive the directory name from this, so the meshes the build
+    installs and the ones a launch looks for agree.
+    """
+    geometry, r_h = section_geometry(cfg)
+    key = json.dumps([MESH_VERSION, N_PHI, N_RINGS, N_HOLE, r_h, geometry], sort_keys=True)
+    return hashlib.sha1(key.encode()).hexdigest()[:12]
+
+
+def cache_directory(digest):
+    """Local mesh cache, for a config the package does not ship."""
+    base = os.environ.get('ROS_HOME') or os.path.join(os.path.expanduser('~'), '.ros')
+    path = os.path.join(base, 'rollchain_meshes', digest)
+    try:
+        os.makedirs(path, exist_ok=True)
+        return path
+    except OSError:
+        path = os.path.join(tempfile.gettempdir(), 'rollchain_meshes', digest)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+
+def write_meshes(cfg, directory, force=False):
+    """Write section_{s}.stl and section_{s}_holes.stl of every section into `directory`."""
+    geometry, r_h = section_geometry(cfg)
+    os.makedirs(directory, exist_ok=True)
+    for s, (L, R, D, holes) in enumerate(geometry, start=1):
+        link = os.path.join(directory, f'section_{s}.stl')
+        holes_path = os.path.join(directory, f'section_{s}_holes.stl')
+        if force or not os.path.exists(link):
+            write_stl(link, link_mesh(L, R, D))
+        if force or not os.path.exists(holes_path):
+            write_stl(holes_path, holes_mesh(L, R, holes, r_h))
+    return directory
+
+
+# ---- Main ---------------------------------------------------------------------
+
+def package_share():
+    from ament_index_python.packages import get_package_share_directory
+    return get_package_share_directory('rollchain_description')
+
+
+def default_xacro():
+    return os.path.join(package_share(), 'urdf', 'rollchain.urdf.xacro')
+
+
+def mesh_uri(cfg, override=None):
+    """URI prefix of the meshes of this config: the installed set if it is there, else a local cache."""
+    if override:
+        directory = os.path.abspath(override)
+        write_meshes(cfg, directory, force=True)
+        return 'file://' + directory
+
+    digest = geometry_hash(cfg)
+    try:
+        shipped = os.path.join(package_share(), 'meshes', digest)
+    except Exception:
+        shipped = None   # not installed (running from the source tree): use the cache
+    if shipped and os.path.exists(os.path.join(shipped, 'section_1.stl')):
+        return f'package://rollchain_description/meshes/{digest}'
+
+    directory = write_meshes(cfg, cache_directory(digest))
+    print(f'rollchain_urdf: these meshes are local to this machine ({directory}); put the config '
+          'in rollchain_description/config and rebuild to ship them.', file=sys.stderr)
+    return 'file://' + directory
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    parser.add_argument('config', nargs='+', help='robot config (YAML); more than one only with --build-meshes')
+    parser.add_argument('--build-meshes', metavar='OUT_DIR',
+                        help='write the meshes of every CONFIG into OUT_DIR/<hash> and print no URDF '
+                             '(the build does this; needs no ROS environment)')
+    parser.add_argument('--mesh-dir', help='write the meshes here instead of the cache, and reference them with file://')
+    parser.add_argument('--no-meshes', action='store_true', help='draw the links as cylinders')
+    parser.add_argument('--xacro', help='xacro file (default: the installed rollchain.urdf.xacro)')
+    args = parser.parse_args()
+
+    if args.build_meshes:
+        for path in args.config:
+            cfg = load_config(os.path.abspath(path))
+            write_meshes(cfg, os.path.join(args.build_meshes, geometry_hash(cfg)), force=True)
+        return 0
+
+    if len(args.config) > 1:
+        parser.error('one config, unless --build-meshes')
+
+    config = os.path.abspath(args.config[0])
+    mappings = {'config': config}
+    if not args.no_meshes:
+        mappings['mesh_uri'] = mesh_uri(load_config(config), args.mesh_dir)
+
+    import xacro
+    doc = xacro.process_file(args.xacro or default_xacro(), mappings=mappings)
+    sys.stdout.write(doc.toprettyxml(indent='  '))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

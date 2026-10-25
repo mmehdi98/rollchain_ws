@@ -7,7 +7,7 @@
 # Units: SI. Write exponents with a sign (2.2e-3, 61.0e+9): xacro reads this
 # file with PyYAML, which would read 61.0e9 as a string.
 #
-# Structure (fixed at start-up): base.length, sections.n/L/R/D, rods.name/section/x
+# Structure (fixed at start-up): base.length, sections.n/L/R/D, rods.name/section/x/w
 # Physics (changeable at runtime): sections.weight/y_cg, rods.r/E, holes.*, friction.mu
 
 /**:
@@ -27,6 +27,8 @@
       name: ["1L", "1R", "2L", "2R", "3L", "3R"]
       section: [1, 1, 2, 2, 3, 3]    # the rod is fixed in the last link of its section
       x: [1.6e-3, -1.6e-3, 2.0e-3, -2.0e-3, 2.4e-3, -2.4e-3]      # lateral offset [m], + = left
+      w: [-1.0e-3, -1.0e-3, 1.0e-3, 1.0e-3, 0.0, 0.0]            # depth along the joint axis [m]; keeps the holes apart,
+                                                                 # does not enter the planar statics (optional, default 0)
       r: [0.3e-3, 0.3e-3, 0.3e-3, 0.3e-3, 0.3e-3, 0.3e-3]         # rod radius [m]
       E: [61.0e+9, 61.0e+9, 61.0e+9, 61.0e+9, 61.0e+9, 61.0e+9]   # equivalent bending modulus [Pa]
 

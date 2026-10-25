@@ -15,11 +15,10 @@
   <arg name="reconfigure" default="false" description="start rqt_reconfigure"/>
   <arg name="max_tension" default="50.0" description="slider range [N]"/>
 
-  <let name="urdf_path" value="$(find-pkg-share rollchain_description)/urdf/rollchain.urdf.xacro"/>
   <let name="rviz_config" value="$(find-pkg-share rollchain_description)/rviz/rollchain.rviz"/>
 
   <node pkg="robot_state_publisher" exec="robot_state_publisher">
-    <param name="robot_description" type="str" value="$(command 'xacro $(var urdf_path) config:=$(var config)')"/>
+    <param name="robot_description" type="str" value="$(command '$(find-pkg-prefix rollchain_description)/lib/rollchain_description/rollchain_urdf $(var config)')"/>
   </node>
 
   <node pkg="rollchain_kinematics" exec="rollchain_state_publisher" output="screen">
