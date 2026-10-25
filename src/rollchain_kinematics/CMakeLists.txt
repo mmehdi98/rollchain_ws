@@ -18,7 +18,7 @@ find_package(rollchain_interfaces REQUIRED)
 find_package(rollchain_model REQUIRED)
 
 # Parameter adapters: ROS parameters <-> rollchain_model structs.
-add_library(${PROJECT_NAME}_params src/ros_params.cpp)
+add_library(${PROJECT_NAME}_params STATIC src/ros_params.cpp)
 target_include_directories(${PROJECT_NAME}_params PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_link_libraries(${PROJECT_NAME}_params PUBLIC rclcpp::rclcpp rollchain_model::rollchain_model)
