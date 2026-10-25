@@ -1,0 +1,113 @@
+<?xml version="1.0"?>
+<!--
+  rollchain: multi-section, symmetric, rod-driven rolling-joint robot.
+
+  Everything comes from the robot config, the same file the nodes read:
+    xacro rollchain.urdf.xacro config:=/path/to/robot.yaml
+
+  Frames: z along the link axis, x lateral (+ = left), joints rotate about +y
+  (a positive angle tilts z toward x, i.e. bends left). base_link has its
+  origin at the bottom of the base; its flat top is at z = base.length.
+
+  Each rolling joint i (1..N) is three elements in series:
+    j{i}_slide    prismatic along x, mimic of j{i}_roll with multiplier R: the contact rolls R theta
+    j{i}_roll     revolute about +y, at the arc centre, R above the parent's flat top
+    j{i}_to_link  fixed, -R along z: link_{i} has its origin at its crest and its flat top at z = L
+  The joint states are j1_roll..jN_roll; robot_state_publisher fills in the mimic slides.
+
+  The real joint range is computed and enforced by the model (theory RC5);
+  the URDF limits are deliberately generous so there is no second copy of it.
+-->
+<robot name="rollchain" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="config" default="$(find rollchain_description)/config/reference_robot.yaml"/>
+
+  <xacro:property name="cfg" value="${xacro.load_yaml('$(arg config)')['/**']['ros__parameters']}"/>
+  <xacro:property name="sec" value="${cfg['sections']}"/>
+  <xacro:property name="num_sections" value="${len(sec['n'])}"/>
+  <xacro:property name="base_length" value="${cfg['base']['length']}"/>
+
+  <material name="rc_base"><color rgba="0.40 0.40 0.40 1"/></material>
+  <material name="rc_0"><color rgba="0.85 0.45 0.15 1"/></material>
+  <material name="rc_1"><color rgba="0.25 0.45 0.80 1"/></material>
+  <material name="rc_2"><color rgba="0.30 0.65 0.35 1"/></material>
+  <material name="rc_3"><color rgba="0.60 0.35 0.70 1"/></material>
+  <material name="rc_4"><color rgba="0.80 0.30 0.30 1"/></material>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 ${base_length / 2}"/>
+      <geometry>
+        <cylinder radius="${sec['D'][0] / 2}" length="${base_length}"/>
+      </geometry>
+      <material name="rc_base"/>
+    </visual>
+  </link>
+
+  <!--
+    One rolling link, then a recursive call for the next one.
+    i: global link index (1..N); s: section, 0-based index into the config lists;
+    k: link index within the section (1..n_s); parent_top: height of the parent's flat top.
+  -->
+  <xacro:macro name="rolling_link" params="i s k parent parent_top">
+    <xacro:property name="R" value="${sec['R'][s]}"/>
+    <xacro:property name="L" value="${sec['L'][s]}"/>
+    <xacro:property name="D" value="${sec['D'][s]}"/>
+    <xacro:property name="n" value="${sec['n'][s]}"/>
+
+    <joint name="j${i}_slide" type="prismatic">
+      <parent link="${parent}"/>
+      <child link="j${i}_slide_link"/>
+      <origin xyz="0 0 ${parent_top}"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-R * pi / 2}" upper="${R * pi / 2}" effort="10" velocity="1"/>
+      <mimic joint="j${i}_roll" multiplier="${R}" offset="0"/>
+    </joint>
+    <link name="j${i}_slide_link"/>
+
+    <joint name="j${i}_roll" type="revolute">
+      <parent link="j${i}_slide_link"/>
+      <child link="j${i}_roll_link"/>
+      <origin xyz="0 0 ${R}"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-pi / 2}" upper="${pi / 2}" effort="10" velocity="1"/>
+    </joint>
+    <link name="j${i}_roll_link"/>
+
+    <joint name="j${i}_to_link" type="fixed">
+      <parent link="j${i}_roll_link"/>
+      <child link="link_${i}"/>
+      <origin xyz="0 0 ${-R}"/>
+    </joint>
+
+    <!-- Visual: a cylinder from the crest to the flat top, coloured by section.
+         Replace it with a mesh of the real link (flat top, one bottom arc) when you have one. -->
+    <link name="link_${i}">
+      <visual>
+        <origin xyz="0 0 ${L / 2}"/>
+        <geometry>
+          <cylinder radius="${D / 2}" length="${L}"/>
+        </geometry>
+        <material name="rc_${s % 5}"/>
+      </visual>
+    </link>
+
+    <xacro:if value="${k &lt; n}">
+      <xacro:rolling_link i="${i + 1}" s="${s}" k="${k + 1}" parent="link_${i}" parent_top="${L}"/>
+    </xacro:if>
+    <xacro:if value="${k == n and s + 1 &lt; num_sections}">
+      <xacro:rolling_link i="${i + 1}" s="${s + 1}" k="1" parent="link_${i}" parent_top="${L}"/>
+    </xacro:if>
+    <xacro:if value="${k == n and s + 1 == num_sections}">
+      <joint name="tip_joint" type="fixed">
+        <parent link="link_${i}"/>
+        <child link="tip"/>
+        <origin xyz="0 0 ${L}"/>
+      </joint>
+      <link name="tip"/>
+    </xacro:if>
+  </xacro:macro>
+
+  <xacro:rolling_link i="1" s="0" k="1" parent="base_link" parent_top="${base_length}"/>
+
+</robot>

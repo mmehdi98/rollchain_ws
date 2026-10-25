@@ -1,0 +1,41 @@
+<!--
+  The whole robot: model, URDF, RViz and a way to set the rod tensions.
+    ros2 launch rollchain_bringup rollchain.launch.xml [config:=...] [gui:=true|false] [rviz:=true|false] [reconfigure:=true|false]
+
+  One config file goes to xacro AND to every node, so the URDF and the model always match.
+    gui:=true          slider window, one slider per rod (default)
+    gui:=false         rod_tension_publisher instead: set tension.<rod> parameters, e.g. with rqt_reconfigure
+    reconfigure:=true  rqt_reconfigure, to tune physics/solver/gravity parameters of the state publisher live
+-->
+<launch>
+  <arg name="config" default="$(find-pkg-share rollchain_description)/config/reference_robot.yaml"
+       description="robot config (YAML): geometry, rods and physics"/>
+  <arg name="gui" default="true" description="slider window for the rod tensions"/>
+  <arg name="rviz" default="true" description="start RViz"/>
+  <arg name="reconfigure" default="false" description="start rqt_reconfigure"/>
+  <arg name="max_tension" default="50.0" description="slider range [N]"/>
+
+  <let name="urdf_path" value="$(find-pkg-share rollchain_description)/urdf/rollchain.urdf.xacro"/>
+  <let name="rviz_config" value="$(find-pkg-share rollchain_description)/rviz/rollchain.rviz"/>
+
+  <node pkg="robot_state_publisher" exec="robot_state_publisher">
+    <param name="robot_description" type="str" value="$(command 'xacro $(var urdf_path) config:=$(var config)')"/>
+  </node>
+
+  <node pkg="rollchain_kinematics" exec="rollchain_state_publisher" output="screen">
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="rollchain_kinematics" exec="tension_slider_gui" if="$(var gui)">
+    <param from="$(var config)"/>
+    <param name="max_tension" value="$(var max_tension)"/>
+  </node>
+
+  <node pkg="rollchain_kinematics" exec="rod_tension_publisher" unless="$(var gui)">
+    <param from="$(var config)"/>
+    <param name="max_tension" value="$(var max_tension)"/>
+  </node>
+
+  <node pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)" if="$(var rviz)"/>
+  <node pkg="rqt_reconfigure" exec="rqt_reconfigure" if="$(var reconfigure)"/>
+</launch>

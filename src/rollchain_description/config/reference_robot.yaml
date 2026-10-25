@@ -1,0 +1,39 @@
+# Reference robot of the rollchain theory (rollchain_theory.md §11.2).
+#
+# This file is the single source of truth for the robot: rollchain.urdf.xacro
+# reads it (xacro ... config:=<this file>) and every node gets it as its
+# parameter file, so the URDF and the model can never disagree.
+#
+# Units: SI. Write exponents with a sign (2.2e-3, 61.0e+9): xacro reads this
+# file with PyYAML, which would read 61.0e9 as a string.
+#
+# Structure (fixed at start-up): base.length, sections.n/L/R/D, rods.name/section/x
+# Physics (changeable at runtime): sections.weight/y_cg, rods.r/E, holes.*, friction.mu
+
+/**:
+  ros__parameters:
+    base:
+      length: 0.015                  # base height below its flat top [m]
+
+    sections:                        # one entry per section, base to tip
+      n: [10, 8, 6]                  # links (= joints) per section
+      L: [0.015, 0.015, 0.015]       # link length, crest to flat top [m]
+      R: [0.004, 0.004, 0.004]       # bottom-arc radius [m]
+      D: [0.0062, 0.0062, 0.0062]    # link diameter [m]
+      weight: [5.685e-3, 5.685e-3, 5.685e-3]  # weight of one link [N]; used only with gravity
+      y_cg: [7.35e-3, 7.35e-3, 7.35e-3]       # CG depth below the flat top [m]
+
+    rods:                            # one entry per rod, listed section by section
+      name: ["1L", "1R", "2L", "2R", "3L", "3R"]
+      section: [1, 1, 2, 2, 3, 3]    # the rod is fixed in the last link of its section
+      x: [1.6e-3, -1.6e-3, 2.0e-3, -2.0e-3, 2.4e-3, -2.4e-3]      # lateral offset [m], + = left
+      r: [0.3e-3, 0.3e-3, 0.3e-3, 0.3e-3, 0.3e-3, 0.3e-3]         # rod radius [m]
+      E: [61.0e+9, 61.0e+9, 61.0e+9, 61.0e+9, 61.0e+9, 61.0e+9]   # equivalent bending modulus [Pa]
+
+    holes:
+      lambda0: 2.2e-3                # setback: depth a rod is clamped in each hole (theory C17) [m]
+      r_h: 0.4e-3                    # hole radius [m]; sets the joint range (theory RC5)
+      wall: 0.2e-3                   # minimum wall between a hole and the link edge [m]
+
+    friction:
+      mu: 0.66                       # effective rod-link friction for the |theta| wrap
