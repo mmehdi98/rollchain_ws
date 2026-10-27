@@ -3,7 +3,7 @@
     ros2 launch rollchain_bringup rollchain.launch.xml [config:=...] [gui:=true|false] [rviz:=true|false] [reconfigure:=true|false]
 
   One config file goes to xacro AND to every node, so the URDF and the model always match.
-    gui:=true          window with one slider per rod and a gravity checkbox (default)
+    gui:=true          window with one slider per rod, a gravity checkbox and a tip payload slider (default)
     gui:=false         rod_tension_publisher instead: set tension.<rod> parameters, e.g. with rqt_reconfigure
     reconfigure:=true  rqt_reconfigure, to tune physics/solver/gravity parameters of the state publisher live
 -->
@@ -14,6 +14,7 @@
   <arg name="rviz" default="true" description="start RViz"/>
   <arg name="reconfigure" default="false" description="start rqt_reconfigure"/>
   <arg name="max_tension" default="60.0" description="tension slider range [N]"/>
+  <arg name="max_payload" default="0.05" description="payload slider range [kg]"/>
 
   <let name="rviz_config" value="$(find-pkg-share rollchain_description)/rviz/rollchain.rviz"/>
 
@@ -28,6 +29,7 @@
   <node pkg="rollchain_kinematics" exec="tension_slider_gui" if="$(var gui)">
     <param from="$(var config)"/>
     <param name="max_tension" value="$(var max_tension)"/>
+    <param name="max_payload" value="$(var max_payload)"/>
   </node>
 
   <node pkg="rollchain_kinematics" exec="rod_tension_publisher" unless="$(var gui)">

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Qt window to drive the rollchain model: one slider per rod and a gravity checkbox.
+"""Qt window to drive the rollchain model: one slider per rod, gravity and a tip payload.
 
-Rod tensions are published on /rod_tensions. Gravity is a parameter of the
-state publisher (gravity.enabled); this window sets it through its parameter
-service, so it stays in sync with rqt_reconfigure and `ros2 param`. The status
-line shows the result of the last solve from /rod_state. Styled like
-joint_state_publisher_gui, as in lopsy.
+Rod tensions are published on /rod_tensions. Gravity and the payload are
+parameters of the state publisher (gravity.enabled, payload.mass); this window
+sets them through its parameter service, so they stay in sync with
+rqt_reconfigure and `ros2 param`. The status line shows the result of the last
+solve from /rod_state. Styled like joint_state_publisher_gui, as in lopsy.
 
 Parameters
   rods.name         rod names (from the robot config; required)
   rods.section      section of each rod (from the robot config; optional, used for grouping)
   initial_tensions  one starting tension per rod [N] (optional)
   max_tension       tension slider range [N] (default 60.0)
+  max_payload       payload slider range [kg] (default 0.05)
   state_publisher   name of the state publisher node (default rollchain_state_publisher)
   publish_rate      [Hz] (default 20.0)
 """
@@ -41,6 +42,7 @@ from rclpy.signals import SignalHandlerOptions
 from rollchain_interfaces.msg import RodState, RodTensions
 
 GRAVITY = 'gravity.enabled'
+PAYLOAD = 'payload.mass'
 
 STYLE_OK = 'color: palette(text);'
 STYLE_WARN = 'color: #b26a00; font-weight: bold;'
@@ -97,6 +99,12 @@ class SliderControl(QWidget):
         self.spin.setValue(value)  # clamps to the range
         self._on_spin(self.spin.value())
 
+    def set_value_silently(self, value):
+        """Set the value without emitting valueChanged (for values read back from the node)."""
+        self.spin.blockSignals(True)
+        self.set_value(value)
+        self.spin.blockSignals(False)
+
     def _on_slider(self, tick):
         # Through the box, so that valueChanged reaches the box's listeners.
         self.spin.setValue(tick * self.resolution)
@@ -108,17 +116,19 @@ class SliderControl(QWidget):
 
 
 class RollchainWindow(QWidget):
-    """Gravity on top, then one slider per rod grouped by section, a status line and Zero tensions."""
+    """Loads on top, then one slider per rod grouped by section, a status line and Zero tensions."""
 
-    def __init__(self, rods, max_tension):
+    def __init__(self, rods, max_tension, max_payload_g):
         super().__init__()
         self.setWindowTitle('Rollchain')
         self.setMinimumWidth(440)
 
         # ---- Loads -----------------------------------------------------------
         self.gravity = QCheckBox('Gravity in the bending plane')
-        self.gravity.setToolTip('Weight of the links, in the direction set by gravity.psi0 '
+        self.gravity.setToolTip('Weight of the links and of the payload, in the direction set by gravity.psi0 '
                                 '(0 upright, pi hanging). Off: the robot lies on a table.')
+        self.payload = SliderControl('Tip payload', 0.0, max_payload_g, 'g', 0.5)
+        self.payload.setToolTip('Mass carried at the tip. Its weight acts only with gravity on.')
 
         # ---- Rod tensions ------------------------------------------------------
         self.controls = []
@@ -152,12 +162,13 @@ class RollchainWindow(QWidget):
         layout.setSpacing(12)
         layout.addWidget(bold(QLabel('Loads')))
         layout.addWidget(self.gravity)
+        layout.addWidget(self.payload)
         layout.addWidget(separator())
         layout.addWidget(scroll, 1)
         layout.addWidget(separator())
         layout.addWidget(self.status)
         layout.addWidget(zero_button)
-        self.resize(460, min(240 + 70 * len(self.controls), 860))
+        self.resize(460, min(300 + 70 * len(self.controls), 860))
 
     def tensions(self):
         return [(name, control.value()) for name, control in self.controls]
@@ -179,7 +190,7 @@ def separator():
 
 
 class RollchainGui(Node):
-    """Publishes the tensions, sets gravity and reads the solver status."""
+    """Publishes the tensions, sets the load parameters and reads the solver status."""
 
     def __init__(self):
         super().__init__('tension_slider_gui')
@@ -187,6 +198,7 @@ class RollchainGui(Node):
         sections = self.declare_parameter('rods.section', Parameter.Type.INTEGER_ARRAY).value
         initial = self.declare_parameter('initial_tensions', Parameter.Type.DOUBLE_ARRAY).value
         self.max_tension = float(self.declare_parameter('max_tension', 60.0).value)
+        self.max_payload = float(self.declare_parameter('max_payload', 0.05).value)
         self.target = self.declare_parameter('state_publisher', 'rollchain_state_publisher').value
         self.publish_rate = float(self.declare_parameter('publish_rate', 20.0).value)
 
@@ -213,6 +225,7 @@ class RollchainGui(Node):
         self.synced = False
         self.sync_future = None
         self.set_futures = []      # (future, names)
+        self.payload_dirty = False
         self.error = None          # last rejected parameter change
 
     # ---- Window wiring ------------------------------------------------------
@@ -220,11 +233,20 @@ class RollchainGui(Node):
     def attach(self, window):
         self.window = window
         window.gravity.toggled.connect(self._on_gravity)
-        window.gravity.setEnabled(False)  # until the node's value is read back
+        window.payload.spin.valueChanged.connect(self._on_payload)
+        self._set_load_controls_enabled(False)
+
+    def _set_load_controls_enabled(self, enabled):
+        self.window.gravity.setEnabled(enabled)
+        self.window.payload.setEnabled(enabled and self.window.gravity.isChecked())
 
     def _on_gravity(self, checked):
+        self.window.payload.setEnabled(checked)
         self.error = None
         self._set_parameters([Parameter(GRAVITY, Parameter.Type.BOOL, bool(checked))])
+
+    def _on_payload(self, _grams):
+        self.payload_dirty = True  # sent from tick(), at most one request in flight
 
     # ---- Parameter service ---------------------------------------------------
 
@@ -238,19 +260,24 @@ class RollchainGui(Node):
     def _request_sync(self):
         if self.sync_future is None and self.get_client.service_is_ready():
             request = GetParameters.Request()
-            request.names = [GRAVITY]
+            request.names = [GRAVITY, PAYLOAD]
             self.sync_future = self.get_client.call_async(request)
 
     def _finish_sync(self):
         values = [parameter_value_to_python(v) for v in self.sync_future.result().values]
         self.sync_future = None
-        if len(values) != 1:
+        if len(values) != 2:
             return
+        gravity, payload = values
         self.window.gravity.blockSignals(True)
-        self.window.gravity.setChecked(bool(values[0]))
+        self.window.gravity.setChecked(bool(gravity))
         self.window.gravity.blockSignals(False)
+        self.window.payload.set_value_silently(1000.0 * float(payload or 0.0))
         self.synced = True
-        self.window.gravity.setEnabled(True)
+        self._set_load_controls_enabled(True)
+
+    def _payload_in_flight(self):
+        return any(PAYLOAD in names for _, names in self.set_futures)
 
     # ---- Periodic work (Qt timer) ------------------------------------------------
 
@@ -269,8 +296,13 @@ class RollchainGui(Node):
             failed = [r.reason for r in future.result().results if not r.successful]
             if failed:
                 self.error = f'{", ".join(names)} rejected: {failed[0]}'
-                self.synced = False  # read the node's value back into the checkbox
-                self.window.gravity.setEnabled(False)
+                self.synced = False  # read the node's values back into the widgets
+                self._set_load_controls_enabled(False)
+
+        if self.synced and self.payload_dirty and not self._payload_in_flight():
+            self.payload_dirty = False
+            kg = self.window.payload.value() / 1000.0
+            self._set_parameters([Parameter(PAYLOAD, Parameter.Type.DOUBLE, kg)])
 
         self._publish_tensions()
         self._update_status()
@@ -321,7 +353,7 @@ def main():
         return 1
 
     app = QApplication(sys.argv)
-    window = RollchainWindow(node.rods, node.max_tension)
+    window = RollchainWindow(node.rods, node.max_tension, 1000.0 * node.max_payload)
     node.attach(window)
 
     # The timer also hands control back to Python regularly,

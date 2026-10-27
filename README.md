@@ -36,7 +36,7 @@ ros2 launch rollchain_bringup rollchain.launch.xml
 
 RViz, the model, and a control window. The window has:
 - one slider per rod;
-- a gravity checkbox;
+- a gravity checkbox and a tip payload slider;
 - a status line that warns when the solver fails, the equilibrium is unstable (the real robot would buckle), or joints reach their limit.
 
 Arguments:
@@ -48,6 +48,7 @@ Arguments:
 | `rviz` | `true` | start RViz |
 | `reconfigure` | `false` | start `rqt_reconfigure`, to tune physics, gravity and solver parameters live |
 | `max_tension` | `60.0` | tension slider range [N] |
+| `max_payload` | `0.05` | payload slider range [kg] |
 
 To check the URDF alone, with a slider per joint: `ros2 launch rollchain_description display.launch.xml`.
 
@@ -82,10 +83,10 @@ The node validates the config when it starts and lists every problem at once, fo
 | publishes | `rod_state` | `rollchain_interfaces/RodState`: base and anchor tensions, pull-in, convergence, stability, strain, stops, contact checks |
 
 Parameters, besides the robot config:
-- `gravity.enabled`, `gravity.psi0`: in-plane gravity; `psi0` 0 = upright, π = hanging. The control window sets `gravity.enabled` through the node's parameter service.
+- `gravity.enabled`, `gravity.psi0`: in-plane gravity; `psi0` 0 = upright, π = hanging.
 - `payload.mass`: mass carried at the tip [kg].
   - Its weight acts along gravity, so only with `gravity.enabled`; on a table the table carries it.
-  - Set it with `ros2 param set` or `rqt_reconfigure`; the control window has no payload slider.
+  - The control window sets this and `gravity.enabled` through the node's parameter service.
 - `solver.method`: `automatic` (sequential without loads, Newton with loads), `sequential`, `fixed_point` or `newton`.
 - other `solver.*` tolerances and limits.
 - `publish_rate`: how often the last joint states are re-published.
