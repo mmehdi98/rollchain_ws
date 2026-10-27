@@ -34,15 +34,20 @@ source install/setup.bash
 ros2 launch rollchain_bringup rollchain.launch.xml
 ```
 
-RViz, the model, and a slider window with one slider per rod. Arguments:
+RViz, the model, and a control window. The window has:
+- one slider per rod;
+- a gravity checkbox;
+- a status line that warns when the solver fails, the equilibrium is unstable (the real robot would buckle), or joints reach their limit.
+
+Arguments:
 
 | Argument | Default | |
 |---|---|---|
 | `config` | `rollchain_description/config/reference_robot.yaml` | the robot config |
-| `gui` | `true` | slider window; `false` starts `rod_tension_publisher` instead (set `tension.<rod>` parameters) |
+| `gui` | `true` | control window; `false` starts `rod_tension_publisher` instead (set `tension.<rod>` parameters) |
 | `rviz` | `true` | start RViz |
 | `reconfigure` | `false` | start `rqt_reconfigure`, to tune physics, gravity and solver parameters live |
-| `max_tension` | `50.0` | slider range [N] |
+| `max_tension` | `60.0` | tension slider range [N] |
 
 To check the URDF alone, with a slider per joint: `ros2 launch rollchain_description display.launch.xml`.
 
@@ -74,10 +79,13 @@ The node validates the config when it starts and lists every problem at once, fo
 | subscribes | `rod_tensions` | `rollchain_interfaces/RodTensions`: by name (partial updates allowed) or one value per rod |
 | subscribes | `tip_wrench` | `geometry_msgs/WrenchStamped`: frame `base_link` = dead load, frame `tip` = follower load; force.z axial, force.x lateral, torque.y bends left |
 | publishes | `joint_states` | `sensor_msgs/JointState`: `j1_roll` … `jN_roll` |
-| publishes | `rod_state` | `rollchain_interfaces/RodState`: base and anchor tensions, pull-in, strain, stops, contact checks |
+| publishes | `rod_state` | `rollchain_interfaces/RodState`: base and anchor tensions, pull-in, convergence, stability, strain, stops, contact checks |
 
 Parameters, besides the robot config:
-- `gravity.enabled`, `gravity.psi0`: in-plane gravity; `psi0` 0 = upright, π = hanging.
+- `gravity.enabled`, `gravity.psi0`: in-plane gravity; `psi0` 0 = upright, π = hanging. The control window sets `gravity.enabled` through the node's parameter service.
+- `payload.mass`: mass carried at the tip [kg].
+  - Its weight acts along gravity, so only with `gravity.enabled`; on a table the table carries it.
+  - Set it with `ros2 param set` or `rqt_reconfigure`; the control window has no payload slider.
 - `solver.method`: `automatic` (sequential without loads, Newton with loads), `sequential`, `fixed_point` or `newton`.
 - other `solver.*` tolerances and limits.
 - `publish_rate`: how often the last joint states are re-published.
@@ -99,14 +107,18 @@ State g = model.solve({0, 0, 0, 0, 10.0, 0}, upright);  // coupled solve (Newton
 
 ## Tests
 
-`rollchain_model` has 62 gtests, one file per layer:
+`rollchain_model` has 68 gtests, one file per layer:
 - parameter validation;
 - topology;
 - joint geometry against the theory's joint ranges and stiffnesses;
 - mechanics: lopsy's gap formulas, and every derivative against finite differences;
 - statics: termination, exact decoupling, scale and mirror symmetry, the small-angle form, the one-section lopsy values, and reference cases A–D of theory §11.2;
 - kinematics: rotation about the contact point, and work-consistent pull-in;
-- loads: load moments against the work of the loads, the Jacobian against finite differences, and cases E–F by Newton and by fixed point.
+- loads:
+  - load moments against the work of the loads, and the Jacobian against finite differences, both including the payload;
+  - the payload as a dead tip force along gravity, and its absence without gravity;
+  - the stability check: the upright straight robot buckles between 5 and 10 g of payload;
+  - cases E–F by Newton and by fixed point.
 
 `rollchain_kinematics` tests the parameter adapters.
 

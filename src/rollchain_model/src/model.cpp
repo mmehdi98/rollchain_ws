@@ -38,6 +38,10 @@ State RollchainModel::solve(const Tensions& F, const Loads& loads, const std::ve
     throw std::invalid_argument("solve: got " + std::to_string(F.size()) + " tensions for " +
                                 std::to_string(num_rods()) + " rods");
   }
+  if (!(loads.payload_weight >= 0.0))
+  {
+    throw std::invalid_argument("solve: payload_weight must be >= 0");
+  }
   if (!kappa.empty() && kappa.size() != num_rods())
   {
     throw std::invalid_argument("solve: kappa must be empty or have one entry per rod");
@@ -86,7 +90,7 @@ std::vector<ContactForce> RollchainModel::contact_forces(const State& state, con
 
 Diagnostics RollchainModel::diagnostics(const State& state, const Loads& loads) const
 {
-  return rollchain_model::diagnostics(joints_, kinematics(state), state, loads, params_);
+  return rollchain_model::diagnostics(joints_, topology_, kinematics(state), state, loads, params_, settings_);
 }
 
 std::size_t RollchainModel::rod_index(const std::string& name) const

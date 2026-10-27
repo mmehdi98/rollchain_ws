@@ -140,8 +140,17 @@ private:
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "cannot solve: %s", e.what());
       return;
     }
+    RodState rs;
+    rs.header.stamp = now();
+    rs.name = rod_names_;
+    rs.tension_base = state.tension.front();
+    rs.converged = state.converged;
+    rs.residual = state.residual;
+
     if (!state.converged)
     {
+      // Report it (the slider GUI shows it), but keep showing the last good shape.
+      rod_pub_->publish(rs);
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                            "static solve did not converge (residual %.3g N m); keeping the last state",
                            state.residual);
@@ -152,19 +161,15 @@ private:
     last_joints_.position = state.theta;
     republish();
 
-    RodState rs;
-    rs.header.stamp = now();
-    rs.name = rod_names_;
-    rs.tension_base = state.tension.front();
     rs.tension_anchor.resize(model_->num_rods());
     for (std::size_t j = 0; j < model_->num_rods(); ++j)
     {
       rs.tension_anchor[j] = state.tension[model_->topology().anchor(j)][j];
     }
     rs.pull_in = model_->pull_in(state);
-    rs.converged = state.converged;
-    rs.residual = state.residual;
     const rm::Diagnostics d = model_->diagnostics(state, config_.loads);
+    rs.stable = d.stable;
+    rs.stability_margin = d.stability_margin;
     rs.max_strain = d.max_strain;
     for (std::size_t k : d.joints_at_stop)
     {
@@ -178,6 +183,12 @@ private:
     {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%zu joints are at their stop (first: joint %zu)",
                            d.joints_at_stop.size(), d.joints_at_stop.front() + 1);
+    }
+    if (!d.stable)
+    {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "unstable equilibrium (stiffness margin %.3g N m/rad): the real robot would buckle",
+                           d.stability_margin);
     }
   }
 

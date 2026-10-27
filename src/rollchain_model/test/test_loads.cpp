@@ -40,13 +40,14 @@ TEST_F(Loaded, LoadMomentIsTheDerivativeOfTheLoadsWork)
     loads.tip_force_axial = 0.3;
     loads.tip_force_lateral = -0.2;
     loads.tip_moment = 0.01;
+    loads.payload_weight = 0.05;
     const std::vector<double> theta = random_angles(24, 0.25, 3);
     const std::vector<double> M = load_moments(forward_kinematics(joints, theta), joints, loads);
 
     auto work = [&](const std::vector<double>& t) {
       const Chain c = forward_kinematics(joints, t);
       const std::vector<Vec2> W = link_weights(joints, loads);
-      double w = tip_force(c, loads).dot(c.tip()) + loads.tip_moment * c.tip_angle();
+      double w = (tip_force(c, loads) + payload_force(loads)).dot(c.tip()) + loads.tip_moment * c.tip_angle();
       for (std::size_t q = 0; q < 24; ++q)
       {
         w += W[q].dot(c.cg[q]);
@@ -73,10 +74,12 @@ TEST_F(Loaded, JacobianMatchesCentralDifferences)
   dead.tip_force_axial = 0.2;
   dead.tip_force_lateral = 0.3;
   dead.tip_moment = 0.005;
+  dead.payload_weight = 0.1;
   Loads follower = gravity(kPi);
   follower.tip_force_axial = -0.25;
   follower.tip_force_lateral = 0.15;
   follower.follower = true;
+  follower.payload_weight = 0.05;
   const std::vector<double> mixed_kappa = {1.0, -1.0, -1.0, 1.0, 1.0, -1.0};
 
   struct Case
@@ -179,6 +182,95 @@ TEST_F(Loaded, FixedPointAgreesWithNewton)
       EXPECT_NEAR(a.theta[k], b.theta[k], 1e-11);
     }
   }
+}
+
+TEST_F(Loaded, PayloadIsADeadTipForceAlongGravity)
+{
+  for (double psi0 : {0.0, kPi, 0.6})
+  {
+    Loads payload = gravity(psi0);
+    payload.payload_weight = 0.1;  // about 10 g
+    Loads force = gravity(psi0);
+    force.tip_force_axial = -0.1 * std::cos(psi0);
+    force.tip_force_lateral = 0.1 * std::sin(psi0);
+    const State a = model.solve(F6(0, 0, 0, 0, 12, 0), payload);
+    const State b = model.solve(F6(0, 0, 0, 0, 12, 0), force);
+    ASSERT_TRUE(a.converged);
+    ASSERT_TRUE(b.converged);
+    for (std::size_t k = 0; k < 24; ++k)
+    {
+      EXPECT_NEAR(a.theta[k], b.theta[k], 1e-12);
+    }
+    const std::vector<ContactForce> fa = model.contact_forces(a, payload);
+    const std::vector<ContactForce> fb = model.contact_forces(b, force);
+    EXPECT_NEAR(fa[0].normal, fb[0].normal, 1e-12);
+    EXPECT_NEAR(fa[0].tangential, fb[0].tangential, 1e-12);
+  }
+}
+
+TEST_F(Loaded, PayloadNeedsGravity)
+{
+  // Lying on a table, the payload's weight goes into the table.
+  Loads loads;
+  loads.payload_weight = 0.2;
+  EXPECT_FALSE(loads.any());
+  const State a = model.solve(F6(0, 0, 0, 0, 10, 0), loads);
+  const State b = model.solve(F6(0, 0, 0, 0, 10, 0));
+  EXPECT_EQ(a.method, SolveMethod::Sequential);
+  for (std::size_t k = 0; k < 24; ++k)
+  {
+    EXPECT_EQ(a.theta[k], b.theta[k]);
+  }
+  loads.payload_weight = -0.1;
+  EXPECT_THROW(model.solve(F6(0, 0, 0, 0, 10, 0), loads), std::invalid_argument);
+}
+
+TEST_F(Loaded, HangingPayloadStraightensUprightPayloadBends)
+{
+  // Hanging: the payload pulls the robot toward the vertical, so it bends less.
+  // Upright: it pushes the bent robot further over.
+  const State free_hanging = model.solve(F6(0, 0, 0, 0, 10, 0), gravity(kPi));
+  Loads hanging = gravity(kPi);
+  hanging.payload_weight = 0.1;
+  const State with_hanging = model.solve(F6(0, 0, 0, 0, 10, 0), hanging);
+  ASSERT_TRUE(with_hanging.converged);
+  EXPECT_LT(model.kinematics(with_hanging).tip_angle(), model.kinematics(free_hanging).tip_angle());
+
+  const State free_upright = model.solve(F6(0, 0, 0, 0, 10, 0), gravity(0.0));
+  Loads upright = gravity(0.0);
+  upright.payload_weight = 0.02;
+  const State with_upright = model.solve(F6(0, 0, 0, 0, 10, 0), upright);
+  ASSERT_TRUE(with_upright.converged);
+  EXPECT_GT(model.kinematics(with_upright).tip_angle(), model.kinematics(free_upright).tip_angle());
+}
+
+TEST_F(Loaded, StabilityOfTheUprightRobotUnderAPayload)
+{
+  // The straight upright robot without tension is an equilibrium for any
+  // payload, but it buckles between 5 and 10 g (smallest stiffness eigenvalue
+  // +0.069 at 5 g, -0.099 at 10 g).
+  const double g = 9.80665;
+  for (double grams : {5.0, 10.0})
+  {
+    Loads upright = gravity(0.0);
+    upright.payload_weight = grams * 1e-3 * g;
+    const State s = model.solve(F6(0, 0, 0, 0, 0, 0), upright);
+    ASSERT_TRUE(s.converged);
+    for (double th : s.theta)
+    {
+      EXPECT_EQ(th, 0.0);  // still straight: the solver finds the equilibrium, stable or not
+    }
+    const Diagnostics d = model.diagnostics(s, upright);
+    EXPECT_EQ(d.stable, grams < 7.0) << grams << " g";
+  }
+  EXPECT_NEAR(model.diagnostics(model.solve(F6(0, 0, 0, 0, 0, 0), gravity(0.0)), gravity(0.0)).stability_margin,
+              0.1457, 5e-4);
+
+  // Hanging, and on the table, it is stable.
+  Loads hanging = gravity(kPi);
+  hanging.payload_weight = 0.05 * g;
+  EXPECT_TRUE(model.diagnostics(model.solve(F6(0, 0, 0, 0, 30, 0), hanging), hanging).stable);
+  EXPECT_TRUE(model.diagnostics(model.solve(F6(0, 0, 0, 0, 30, 0))).stable);
 }
 
 TEST_F(Loaded, TipLoadsDeadAndFollower)

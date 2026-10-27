@@ -3,7 +3,7 @@
     ros2 launch rollchain_bringup rollchain.launch.xml [config:=...] [gui:=true|false] [rviz:=true|false] [reconfigure:=true|false]
 
   One config file goes to xacro AND to every node, so the URDF and the model always match.
-    gui:=true          slider window, one slider per rod (default)
+    gui:=true          window with one slider per rod and a gravity checkbox (default)
     gui:=false         rod_tension_publisher instead: set tension.<rod> parameters, e.g. with rqt_reconfigure
     reconfigure:=true  rqt_reconfigure, to tune physics/solver/gravity parameters of the state publisher live
 -->
@@ -13,7 +13,7 @@
   <arg name="gui" default="true" description="slider window for the rod tensions"/>
   <arg name="rviz" default="true" description="start RViz"/>
   <arg name="reconfigure" default="false" description="start rqt_reconfigure"/>
-  <arg name="max_tension" default="50.0" description="slider range [N]"/>
+  <arg name="max_tension" default="60.0" description="tension slider range [N]"/>
 
   <let name="rviz_config" value="$(find-pkg-share rollchain_description)/rviz/rollchain.rviz"/>
 

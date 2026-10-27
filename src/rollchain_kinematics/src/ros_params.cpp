@@ -12,6 +12,8 @@ namespace rm = rollchain_model;
 namespace
 {
 
+constexpr double kStandardGravity = 9.80665;  // [m/s^2], turns payload.mass into a weight
+
 rcl_interfaces::msg::ParameterDescriptor describe(const std::string& text, bool read_only = false)
 {
   rcl_interfaces::msg::ParameterDescriptor d;
@@ -163,6 +165,13 @@ NodeConfig declare_robot_parameters(rclcpp::Node& node)
       node.declare_parameter("gravity.enabled", false, describe("gravity acts in the bending plane"));
   config.loads.psi0 = node.declare_parameter(
       "gravity.psi0", 0.0, describe("base axis from the upward vertical [rad], + toward the left; 0 upright, pi hanging"));
+  const double payload = node.declare_parameter(
+      "payload.mass", 0.0, describe("mass carried at the tip [kg]; its weight acts along gravity, so only with gravity.enabled"));
+  if (!(payload >= 0.0))
+  {
+    throw std::invalid_argument("payload.mass must be >= 0");
+  }
+  config.loads.payload_weight = payload * kStandardGravity;
 
   // ---- Solver -----------------------------------------------------------------
   const rm::SolverSettings s;
@@ -245,6 +254,15 @@ bool apply_parameter(NodeConfig& config, const rclcpp::Parameter& p, std::string
     else if (name == "gravity.psi0")
     {
       config.loads.psi0 = p.as_double();
+    }
+    else if (name == "payload.mass")
+    {
+      if (!(p.as_double() >= 0.0))
+      {
+        reason = "payload.mass must be >= 0";
+        return false;
+      }
+      config.loads.payload_weight = p.as_double() * kStandardGravity;
     }
     else if (name == "solver.method")
     {

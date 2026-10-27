@@ -299,6 +299,9 @@ $$M^G_i=\sum_{q=i}^{N}m\big(\mathbf p^G_q-\mathbf O_i,\ \mathbf W_q\big),\qquad 
 
 - $\mathbf W_q = G_q\,\hat{\mathbf g}$ with $\hat{\mathbf g} = (-\cos\psi_0,\ \sin\psi_0)$ in (X, Y). $\psi_0$ is the angle of the base axis from the upward vertical, positive toward the left: upright $\psi_0 = 0$, hanging $\psi_0 = \pi$.
 - Planar test on a table: there is no in-plane gravity, so set $G = 0$ (the table friction is not modelled).
+- **Payload.** A mass $m_p$ carried at the tip is a dead tip force $m_p g\,\hat{\mathbf g}$ at $\mathbf p^{tip}$.
+  - It is present only with in-plane gravity; on a table the table carries it.
+  - In (RC21)–(RC22) it is treated like a link weight placed at the tip, carried by every joint.
 - $\mathbf p^G_q$ is link $q$'s CG, on its axis at height $L_q - y_{CG}$ above its crest. $\mathbf p^{tip}$ is the top centre of link $N$.
 - $\mathbf F^{tip}$ here is a dead load, fixed in the base frame. A follower load turns with $\Theta_N$ (Jacobian in §8).
 - **Check:** (RC16) equals the derivative of the loads' work with respect to $\theta_i$, because link $i$ rotates about $\mathbf O_i$ (RC6) (§11.1).
@@ -362,6 +365,8 @@ $$g_i(\theta)=M^{el}_i(\theta)-\sum_{j\in\mathcal J_i}T_{j,i-1}\big(u_{ij}-R_i\s
 - **Newton** on the analytic Jacobian (§8). Start from the §7.1 solution with the loads off, and continue in the load magnitude from 0 to 1.
 - **Or a fixed-point iteration:** compute $M^G$ and $M^{ext}$ from the current shape, solve §7.1 with them as known moments, and repeat. It converges when the load stiffness is well below the joint stiffness. For the upright reference robot it needed 19 iterations to reach $10^{-14}$ rad.
 - **Several equilibria** are possible (a tall upright robot, a large tip load). Without friction the Jacobian is the Hessian of Π, so it is symmetric, and an equilibrium is stable if it is positive definite. The upright reference robot at zero tension has a smallest eigenvalue of 0.146 N·m/rad: stable.
+  - **Payload.** With a payload the upright straight robot stays an equilibrium for any mass, but its smallest eigenvalue falls to +0.069 N·m/rad at 5 g and −0.099 N·m/rad at 10 g: it buckles at about 7 g.
+  - **The code** reports the smallest eigenvalue of the symmetric part of the Jacobian without its friction terms as a stability margin. It is exact for dead loads and only indicative with a follower load or friction.
 
 ### 7.3 Displacement input `[NEW]` (outline)
 If the motors command rod pull-in instead of tension:

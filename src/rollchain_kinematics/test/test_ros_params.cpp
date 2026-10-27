@@ -137,6 +137,12 @@ TEST_F(RosParams, ApplyParameter)
   EXPECT_TRUE(apply_parameter(c, rclcpp::Parameter("gravity.enabled", true), reason));
   EXPECT_TRUE(c.loads.gravity_in_plane);
 
+  EXPECT_DOUBLE_EQ(c.loads.payload_weight, 0.0);
+  EXPECT_TRUE(apply_parameter(c, rclcpp::Parameter("payload.mass", 0.02), reason));
+  EXPECT_DOUBLE_EQ(c.loads.payload_weight, 0.02 * 9.80665);
+  EXPECT_FALSE(apply_parameter(c, rclcpp::Parameter("payload.mass", -0.01), reason));
+  EXPECT_NE(reason.find("payload.mass"), std::string::npos);
+
   EXPECT_TRUE(apply_parameter(c, rclcpp::Parameter("rods.E", std::vector<double>(6, 50.0e9)), reason));
   EXPECT_DOUBLE_EQ(c.robot.rods[2].E, 50.0e9);
 

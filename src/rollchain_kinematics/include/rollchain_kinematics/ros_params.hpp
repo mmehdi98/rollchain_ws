@@ -6,7 +6,7 @@
 // Parameter names follow the robot config (rollchain_description/config):
 //   structure (required, read-only): base.length, sections.n/L/R/D, rods.name/section/x/w
 //   physics (optional, changeable):  sections.weight/y_cg, rods.r/E, holes.lambda0/r_h/wall, friction.mu
-//   loads (changeable):              gravity.enabled, gravity.psi0
+//   loads (changeable):              gravity.enabled, gravity.psi0, payload.mass
 //   solver (changeable):             solver.*
 
 #include <string>

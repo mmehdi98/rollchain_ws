@@ -17,12 +17,16 @@ std::vector<Vec2> link_weights(const std::vector<Joint>& joints, const Loads& lo
 /// frame and turned by the tip angle.
 Vec2 tip_force(const Chain& chain, const Loads& loads);
 
+/// Weight of the tip payload in the base frame, scaled (zero without in-plane
+/// gravity). It acts at the tip like a dead load, in the direction of gravity.
+Vec2 payload_force(const Loads& loads);
+
 /// M^G_k + M^ext_k for every joint (RC16): the moment about the contact point
-/// O_k of the weights of links k+1..N and of the tip load.
+/// O_k of the weights of links k+1..N, the payload and the tip load.
 std::vector<double> load_moments(const Chain& chain, const std::vector<Joint>& joints, const Loads& loads);
 
 /// Load-arm sums for the Jacobian (RC21), split by load:
-///   weights[k] = sum_{q >= k} (cg_q - O_k) . W_q
+///   weights[k] = sum_{q >= k} (cg_q - O_k) . W_q + (tip - O_k) . W_payload
 ///   tip[k]     = (tip - O_k) . F_tip
 struct LoadArms
 {

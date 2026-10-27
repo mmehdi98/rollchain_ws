@@ -64,6 +64,8 @@ struct Loads
   double tip_force_lateral = 0.0;  ///< tip force, lateral component, + = left [N]
   double tip_moment = 0.0;         ///< tip moment, + promotes bending left [N m]
   bool follower = false;           ///< false: the force is fixed in the base frame; true: it turns with the tip
+  double payload_weight = 0.0;     ///< weight of a mass carried at the tip [N]; acts along gravity, so only
+                                   ///< when gravity_in_plane is true
   double scale = 1.0;              ///< multiplies every load; the Newton solver uses it for continuation
 
   /// True when any load acts, i.e. when the joints are coupled (theory §7.2).

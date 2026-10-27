@@ -3,7 +3,7 @@
 //
 //   parameters  rods.name       from the robot config: one tension parameter per rod
 //               tension.<name>  base tension of that rod [N] (default 0)
-//               max_tension     slider range in rqt_reconfigure [N] (default 50)
+//               max_tension     slider range in rqt_reconfigure [N] (default 60)
 //               publish_rate    [Hz] (default 20)
 //   publishes   rod_tensions    (rollchain_interfaces/RodTensions, with names)
 
@@ -28,7 +28,7 @@ public:
     names_desc.read_only = true;
     rod_names_ = declare_parameter<std::vector<std::string>>("rods.name", names_desc);
 
-    const double max_tension = declare_parameter("max_tension", 50.0);
+    const double max_tension = declare_parameter("max_tension", 60.0);
     const double rate = declare_parameter("publish_rate", 20.0);
 
     for (const std::string& name : rod_names_)

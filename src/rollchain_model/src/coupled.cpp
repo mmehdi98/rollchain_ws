@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include <Eigen/Eigenvalues>
 #include <Eigen/LU>
 
 #include "rollchain_model/kinematics.hpp"
@@ -45,7 +46,7 @@ std::vector<double> residual_vector(const std::vector<Joint>& joints, const Topo
 
 Eigen::MatrixXd jacobian(const std::vector<Joint>& joints, const Topology& topology, const Tensions& F,
                          const std::vector<double>& theta, const Loads& loads, const RobotParams& params,
-                         const SolverSettings& settings, const std::vector<double>& kappa)
+                         const SolverSettings& settings, const std::vector<double>& kappa, bool with_friction)
 {
   const std::size_t N = joints.size();
   Eigen::MatrixXd Jm = Eigen::MatrixXd::Zero(static_cast<Eigen::Index>(N), static_cast<Eigen::Index>(N));
@@ -58,7 +59,9 @@ Eigen::MatrixXd jacobian(const std::vector<Joint>& joints, const Topology& topol
   const bool dead = !loads.follower;
 
   // Suffix sums of the weights, for the diagonal term of the moving contact.
+  // The payload hangs at the tip, above every joint.
   std::vector<Vec2> W_above(N + 1, Vec2::Zero());
+  W_above[N] = payload_force(loads);
   for (std::size_t k = N; k-- > 0;)
   {
     W_above[k] = W_above[k + 1] + W[k];
@@ -84,7 +87,10 @@ Eigen::MatrixXd jacobian(const std::vector<Joint>& joints, const Topology& topol
     for (const RodAtJoint& rod : joint.rods)
     {
       const double Tj = T[i][rod.rod];
-      friction += params.mu * kappa_of(kappa, rod.rod) * Tj * (rod.u - joint.R * s);
+      if (with_friction)
+      {
+        friction += params.mu * kappa_of(kappa, rod.rod) * Tj * (rod.u - joint.R * s);
+      }
       total_tension += Tj;
     }
 
@@ -107,6 +113,19 @@ Eigen::MatrixXd jacobian(const std::vector<Joint>& joints, const Topology& topol
     }
   }
   return Jm;
+}
+
+double stability_margin(const std::vector<Joint>& joints, const Topology& topology, const Tensions& F,
+                        const std::vector<double>& theta, const Loads& loads, const RobotParams& params,
+                        const SolverSettings& settings)
+{
+  if (joints.empty())
+  {
+    return 0.0;
+  }
+  const Eigen::MatrixXd J = jacobian(joints, topology, F, theta, loads, params, settings, {}, false);
+  const Eigen::MatrixXd sym = 0.5 * (J + J.transpose());
+  return Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd>(sym, Eigen::EigenvaluesOnly).eigenvalues().minCoeff();
 }
 
 State solve_fixed_point(const std::vector<Joint>& joints, const Topology& topology, const Tensions& F,

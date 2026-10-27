@@ -47,9 +47,13 @@ struct Diagnostics
   std::vector<std::size_t> joints_at_stop;  ///< joints outside their range (stop engaged)
   double min_normal_force = 0.0;            ///< smallest F^R [N]; must stay > 0
   double max_slip_ratio = 0.0;              ///< largest |H| / F^R; link-link friction must exceed it
+  double stability_margin = 0.0;            ///< see stability_margin() [N m/rad]
+  bool stable = true;                       ///< stability_margin > 0: the robot would not buckle away
 };
 
-Diagnostics diagnostics(const std::vector<Joint>& joints, const Chain& chain, const State& state,
-                        const Loads& loads, const RobotParams& params);
+/// The stability check uses the solved tensions with kappa = +1.
+Diagnostics diagnostics(const std::vector<Joint>& joints, const Topology& topology, const Chain& chain,
+                        const State& state, const Loads& loads, const RobotParams& params,
+                        const SolverSettings& settings);
 
 }  // namespace rollchain_model

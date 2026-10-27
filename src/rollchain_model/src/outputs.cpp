@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 
+#include "rollchain_model/coupled.hpp"
 #include "rollchain_model/loads.hpp"
 #include "rollchain_model/mechanics.hpp"
 
@@ -34,7 +35,7 @@ std::vector<ContactForce> contact_forces(const std::vector<Joint>& joints, const
   const Vec2 F_tip = tip_force(chain, loads);
 
   std::vector<ContactForce> forces(N);
-  Vec2 W_above = Vec2::Zero();
+  Vec2 W_above = payload_force(loads);  // the payload is above every joint
   for (std::size_t k = N; k-- > 0;)
   {
     W_above += W[k];
@@ -64,8 +65,9 @@ std::vector<ContactForce> contact_forces(const std::vector<Joint>& joints, const
   return forces;
 }
 
-Diagnostics diagnostics(const std::vector<Joint>& joints, const Chain& chain, const State& state,
-                        const Loads& loads, const RobotParams& params)
+Diagnostics diagnostics(const std::vector<Joint>& joints, const Topology& topology, const Chain& chain,
+                        const State& state, const Loads& loads, const RobotParams& params,
+                        const SolverSettings& settings)
 {
   Diagnostics d;
   d.min_normal_force = std::numeric_limits<double>::infinity();
@@ -92,7 +94,10 @@ Diagnostics diagnostics(const std::vector<Joint>& joints, const Chain& chain, co
   if (joints.empty())
   {
     d.min_normal_force = 0.0;
+    return d;
   }
+  d.stability_margin = stability_margin(joints, topology, state.tension.front(), state.theta, loads, params, settings);
+  d.stable = d.stability_margin > 0.0;
   return d;
 }
 
